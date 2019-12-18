@@ -1,0 +1,87 @@
+#include <time.h>
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+#include <mpi.h>
+
+#define Rows 5000
+#define Cols 4
+
+//function headers
+void discriminant (float a,float b,float c,float * r);
+
+void readmatfile (float *local_mat);
+
+int main(int argc, char ** argv){
+			
+	//mpi variables
+	int pid, npr, nrows,cant,r;
+	double mpitime;
+	
+    //mpi environment
+	mpitime = - MPI_Wtime();//start time
+	MPI_Init(&argc, &argv);
+  	MPI_Comm_size(MPI_COMM_WORLD, &npr);
+  	MPI_Comm_rank(MPI_COMM_WORLD, &pid);
+
+	//Big_Mat to gather all the  a b c r in rank=0
+	float *Big_mat = (float *)malloc(Rows * Cols * sizeof(float));
+
+    //local mat to read file in all ranks
+	float *local_mat = (float *)malloc(Rows * Cols * sizeof(float));
+	
+	//read inputs and store in a matrix
+    readmatfile(local_mat);
+
+    //number of rows each processor will do
+	nrows = Rows/npr;
+    	cant = nrows*Cols;
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    //enviamos a cada proceso las rows q van a sacar el discriminante
+	for (r = pid*nrows; r < nrows*(pid+1); r++){
+		discriminant(*(local_mat + r*Cols + 0), *(local_mat + r*Cols + 1), *(local_mat + r*Cols + 2), &*(local_mat + r*Cols + 3));
+	}
+	
+    //set Big_mat to gather all inputs from local mats
+    MPI_Gather(local_mat, cant, MPI_FLOAT, Big_mat,cant, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (pid==0){
+	int test;
+        for (r = 0; r< Rows; r++){
+	    test= *(Big_mat + r*Cols + 3);
+            if (test==0)
+            printf("El vector (%.2f, %.2f, %.2f) tiene raices reales\n",*(Big_mat + r*Cols + 0), *(Big_mat + r*Cols + 1), *(Big_mat + r*Cols + 2));
+            else if (test == 1)
+                printf("El vector (%.2f, %.2f, %.2f) tiene raices unicas\n",*(Big_mat + r*Cols + 0), *(Big_mat + r*Cols + 1), *(Big_mat + r*Cols + 2));
+            else
+                printf("El vector (%.2f, %.2f, %.2f) tiene raices complejas\n",*(Big_mat + r*Cols + 0), *(Big_mat + r*Cols + 1), *(Big_mat + r*Cols + 2));
+            }
+	mpitime += MPI_Wtime();
+	printf("Time taken using %d processes: %f", npr,mpitime);
+    }
+            
+    MPI_Finalize();        
+}
+    
+
+void readmatfile(float * local_mat){
+	FILE *filemat = fopen("mat5000.csv", "r");
+	int i;
+	for (i=0;i<Rows;i++)
+		//access the file and store each value of the matrix value by value
+		fscanf(filemat, "%f %f %f\n", &*(local_mat + i*Cols + 0), &*(local_mat + i*Cols + 1), &*(local_mat + i*Cols + 2));
+	fclose(filemat);
+}
+
+void discriminant (float a,float b,float c,float * r){
+    float d = b*b - 4*a*c;
+	if (d>0)
+        *r=0;//real
+	else if (d == 0)
+        *r=1;//unica
+	else
+        *r=2;//complex
+}
